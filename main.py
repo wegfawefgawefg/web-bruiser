@@ -16,11 +16,13 @@ need a way to display the javascript???
 '''
 
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QLineEdit, QTextEdit, QMainWindow
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QVector2D
 import requests
 import re
+
+from PyQt5.QtCore import *
+from PyQt5.QtWidgets import *
+from PyQt5.QtGui import *
+from PyQt5.QtWebEngineWidgets import *
 
 class WebBruiser(QWidget):
     def __init__(self):
@@ -30,6 +32,8 @@ class WebBruiser(QWidget):
     def initUI(self):
         # self.setGeometry(0, 0, 600, 800)
         self.setWindowTitle('Web Bruiser')
+        self.visited_urls = []
+        self.forward_back_cursor = 0
 
         self.bar_height = 30
 
@@ -48,7 +52,7 @@ class WebBruiser(QWidget):
 
         self.show()
 
-    def go(self):
+    def go(self, was_a_back_or_forward=False):
         # set status bar to "loading {url}"
         self.status_bar.setText("loading " + self.url_bar.text())
         url = self.url_bar.text()
@@ -57,24 +61,44 @@ class WebBruiser(QWidget):
             url = self.url_bar.text()
             url = self.format_raw_url(url)
             r = requests.get(url)
-            # if the url is invalid, set status bar to "invalid url"
             if r.status_code != 200:
                 self.error_invalid_url()
                 return
             elif r.status_code == 200:
-                self.status_bar.setText("loaded " + self.url_bar.text())
+                if not was_a_back_or_forward:
+                    print("not a back or forward")
+                    # if the cursor is not at the end, then we need to remove the urls that are after the cursor
+                    if self.forward_back_cursor != len(self.visited_urls) - 1:
+                        self.visited_urls = self.visited_urls[:self.forward_back_cursor + 1]
+
+                    self.visited_urls.append(url)
+                    self.forward_back_cursor = len(self.visited_urls) - 1
+                response_time = r.elapsed.total_seconds()
+                self.status_bar.setText(f"loaded {self.url_bar.text()} in {response_time} seconds" )
+
+                # # parse the html
+                # html = r.text
+                # # find all the links
+                # links = re.findall(r'href=[\'"]?([^\'" >]+)', html)
+                # # find all the images
+                # images = re.findall(r'src=[\'"]?([^\'" >]+)', html)
+
+                # # display the links
+                # for link in links:
+                #     self.text.append(link)
+                # # display the images
+                # for image in images:
+                #     self.text.append(image)
+
                 self.text.setText(r.text)
+                # drop the text into a text file
+                # with open("test.html", "w") as f:
+                #     f.write(r.text)
+
         except Exception as e:
             print(e)
             self.error_invalid_url()
         
-
-    def clear_url_bar(self):
-        is_default = self.url_bar.text().startswith("enter url")
-        print("is default: ", is_default)
-        if is_default:
-            self.url_bar.setText(self.url_bar.text()[len("enter url"):])
-
     def error_invalid_url(self):
         url = self.url_bar.text()
         target_url = self.format_raw_url(url)
@@ -85,13 +109,28 @@ class WebBruiser(QWidget):
             url = "http://" + url
         return url
 
-
     def keyPressEvent(self, e):
         if e.key() == Qt.Key_Q or e.key() == Qt.Key_Escape:
             self.close()
-        # refresh on press r
         if e.key() == Qt.Key_R:
-            self.refresh()
+            self.go()
+        # back button on mouse
+        if e.key() == Qt.Key_B:
+            self.back()
+        if e.key() == Qt.Key_H:
+            self.history()
+
+    def history(self):
+        print(self.visited_urls)
+
+    def back(self):
+        if len(self.visited_urls) >= 2:
+            self.url_bar.setText(self.visited_urls[self.forward_back_cursor - 1])
+            # self.visited_urls.pop()
+            self.go(was_a_back_or_forward=True)
+            self.forward_back_cursor -= 1
+
+    # maybe a forward button?
 
     def resize_elements(self):
         self.url_bar.resize(self.width(), self.bar_height)
@@ -104,10 +143,6 @@ class WebBruiser(QWidget):
     def resizeEvent(self, event):
         QMainWindow.resizeEvent(self, event)
         self.resize_elements()
-
-
-
-
     
 if __name__ == '__main__':
     app = QApplication(sys.argv)
